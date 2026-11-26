@@ -1,0 +1,50 @@
+# Temporales y archivos del sistema
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Configuración local de editores
+/.idea/
+/.vscode/
+
+# Registros, cachés y dependencias locales
+*.log
+*.log.*
+/logs/
+/.cache/
+/cache/
+/node_modules/
+
+# Copias de seguridad y volcados de datos
+*.bak
+*.backup
+*.old
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.sql.gz
+*.sql.zip
+local.sql
+dump.sql
+backup.sql
+/backups/
+/dumps/
+
+# Configuración privada y credenciales
+.env
+.env.*
+.envrc
+.envrc.local
+!.env.example
+!.env.sample
+!.env.template
+/wp-config.php
+/auth.json
+*.pem
+*.key
