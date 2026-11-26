@@ -18,7 +18,7 @@ final class WebZero_Leads_Admin {
 
 	public static function register() {
 		add_action( 'admin_menu', array( self::class, 'menu' ) );
-		add_action( 'admin_enqueue_scripts', array( self::class, 'enqueue_dashboard' ) );
+		add_action( 'admin_enqueue_scripts', array( self::class, 'enqueue' ) );
 		add_action( 'admin_post_webzero_leads_update', array( self::class, 'update' ) );
 		add_action( 'admin_post_webzero_leads_follow_up', array( self::class, 'update_follow_up' ) );
 		add_action( 'admin_post_webzero_leads_note', array( self::class, 'add_note' ) );
@@ -32,10 +32,22 @@ final class WebZero_Leads_Admin {
 		WebZero_Leads_Pipeline::menu( self::PAGE );
 	}
 
-	public static function enqueue_dashboard( $hook ) {
-		if ( self::$screen_hook === $hook && current_user_can( self::CAPABILITY ) && ! self::requested_lead() ) {
-			WebZero_Leads_Dashboard::enqueue();
+	public static function enqueue( $hook ) {
+		if ( self::$screen_hook !== $hook || ! current_user_can( self::CAPABILITY ) ) {
+			return;
 		}
+		if ( ! self::requested_lead() ) {
+			WebZero_Leads_Dashboard::enqueue();
+			return;
+		}
+
+		$dir = dirname( __DIR__ );
+		wp_enqueue_style(
+			'webzero-leads-detail',
+			plugins_url( 'assets/detail.css', $dir . '/webzero-leads.php' ),
+			array(),
+			(string) filemtime( $dir . '/assets/detail.css' )
+		);
 	}
 
 	private static function requested_lead() {
@@ -149,15 +161,15 @@ final class WebZero_Leads_Admin {
 	public static function render() {
 		self::authorize();
 		$id = self::requested_lead();
+		if ( $id ) {
+			self::render_detail( $id );
+			return;
+		}
 		?>
-		<div class="wrap<?php echo $id ? '' : ' webzero-leads-dashboard'; ?>">
+		<div class="wrap webzero-leads-dashboard">
 			<h1>WebZero Leads</h1>
 			<?php self::notice(); ?>
-			<?php if ( $id ) : ?>
-				<?php self::render_detail( $id ); ?>
-			<?php else : ?>
-				<?php WebZero_Leads_Dashboard::render( self::PAGE ); ?>
-			<?php endif; ?>
+			<?php WebZero_Leads_Dashboard::render( self::PAGE ); ?>
 		</div>
 		<?php
 	}
@@ -204,75 +216,9 @@ final class WebZero_Leads_Admin {
 	}
 
 	private static function render_detail( $id ) {
-		$lead = WebZero_Leads_Storage::find( $id );
-		?>
-		<p><a href="<?php echo esc_url( self::url() ); ?>"><?php esc_html_e( 'Volver al listado', 'webzero-leads' ); ?></a></p>
-		<?php if ( ! $lead ) : ?>
-			<p><?php esc_html_e( 'La solicitud no está disponible.', 'webzero-leads' ); ?></p>
-			<?php return; ?>
-		<?php endif; ?>
-		<h2><?php echo esc_html( $lead['name'] ); ?></h2>
-		<dl>
-			<dt><strong><?php esc_html_e( 'Correo electrónico', 'webzero-leads' ); ?></strong></dt>
-			<dd><?php echo esc_html( $lead['email'] ); ?></dd>
-			<dt><strong><?php esc_html_e( 'Teléfono', 'webzero-leads' ); ?></strong></dt>
-			<dd><?php echo esc_html( $lead['phone'] ?? __( 'Sin teléfono', 'webzero-leads' ) ); ?></dd>
-			<dt><strong><?php esc_html_e( 'Servicio', 'webzero-leads' ); ?></strong></dt>
-			<dd><?php echo esc_html( $lead['service'] ); ?></dd>
-			<dt><strong><?php esc_html_e( 'Fecha de recepción', 'webzero-leads' ); ?></strong></dt>
-			<dd><?php echo esc_html( self::date( $lead['created_at'] ) ); ?></dd>
-		</dl>
-		<h3><?php esc_html_e( 'Mensaje', 'webzero-leads' ); ?></h3>
-		<p style="white-space: pre-wrap; overflow-wrap: anywhere"><?php echo esc_html( $lead['message'] ); ?></p>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="webzero_leads_update">
-			<input type="hidden" name="lead_id" value="<?php echo esc_attr( (string) $id ); ?>">
-			<?php wp_nonce_field( 'webzero_leads_update_' . $id ); ?>
-			<label for="webzero-lead-status"><strong><?php esc_html_e( 'Estado comercial', 'webzero-leads' ); ?></strong></label>
-			<select id="webzero-lead-status" name="lead_status">
-				<?php foreach ( WebZero_Leads_Storage::statuses() as $key => $label ) : ?>
-					<option value="<?php echo esc_attr( $key ); ?>"<?php selected( $lead['status'], $key ); ?>><?php echo esc_html( $label ); ?></option>
-				<?php endforeach; ?>
-			</select>
-			<?php submit_button( __( 'Guardar estado', 'webzero-leads' ), 'primary', 'submit', false ); ?>
-		</form>
-		<?php self::render_follow_up( $lead ); ?>
-		<hr>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="webzero_leads_delete">
-			<input type="hidden" name="lead_id" value="<?php echo esc_attr( (string) $id ); ?>">
-			<?php wp_nonce_field( 'webzero_leads_delete_' . $id ); ?>
-			<p><label><input type="checkbox" name="confirm_delete" value="yes" required> <?php esc_html_e( 'Confirmo que quiero eliminar esta solicitud definitivamente.', 'webzero-leads' ); ?></label></p>
-			<?php submit_button( __( 'Eliminar solicitud', 'webzero-leads' ), 'delete', 'submit', false ); ?>
-		</form>
-		<?php
-	}
-
-	private static function render_follow_up( $lead ) {
-		$id = (int) $lead['id'];
-		?>
-		<hr>
-		<h3><?php esc_html_e( 'Seguimiento', 'webzero-leads' ); ?></h3>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="webzero_leads_follow_up">
-			<input type="hidden" name="lead_id" value="<?php echo esc_attr( (string) $id ); ?>">
-			<?php wp_nonce_field( 'webzero_leads_follow_up_' . $id ); ?>
-			<label for="webzero-next-follow-up"><strong><?php esc_html_e( 'Próximo contacto', 'webzero-leads' ); ?></strong></label>
-			<input type="date" id="webzero-next-follow-up" name="next_follow_up" min="1000-01-01" max="9999-12-31" value="<?php echo esc_attr( $lead['next_follow_up'] ?? '' ); ?>" aria-describedby="webzero-follow-up-help">
-			<?php submit_button( __( 'Guardar fecha', 'webzero-leads' ), 'secondary', 'submit', false ); ?>
-			<p id="webzero-follow-up-help" class="description"><?php esc_html_e( 'Deja la fecha vacía para quitar el seguimiento programado.', 'webzero-leads' ); ?></p>
-		</form>
-		<h4><?php esc_html_e( 'Notas internas', 'webzero-leads' ); ?></h4>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="webzero_leads_note">
-			<input type="hidden" name="lead_id" value="<?php echo esc_attr( (string) $id ); ?>">
-			<?php wp_nonce_field( 'webzero_leads_note_' . $id ); ?>
-			<p><label for="webzero-lead-note"><?php esc_html_e( 'Nueva nota', 'webzero-leads' ); ?></label></p>
-			<textarea id="webzero-lead-note" name="lead_note" class="large-text" rows="3" maxlength="<?php echo esc_attr( (string) self::NOTE_LIMIT ); ?>" required></textarea>
-			<?php submit_button( __( 'Añadir nota', 'webzero-leads' ), 'secondary', 'submit', false ); ?>
-		</form>
-		<?php self::render_notes( $id ); ?>
-		<?php
+		$lead     = WebZero_Leads_Storage::find( $id );
+		$statuses = WebZero_Leads_Storage::statuses();
+		require dirname( __DIR__ ) . '/views/detail.php';
 	}
 
 	private static function render_notes( $id ) {
@@ -294,12 +240,12 @@ final class WebZero_Leads_Admin {
 			return;
 		}
 		?>
-		<h4><?php esc_html_e( 'Historial de notas', 'webzero-leads' ); ?></h4>
-		<ul>
+		<h3><?php esc_html_e( 'Historial de notas', 'webzero-leads' ); ?></h3>
+		<ul class="wzl-detail-history" role="list">
 			<?php foreach ( $notes as $note ) : ?>
 				<li>
 					<strong><?php echo esc_html( self::date( $note['created_at'] ) ); ?></strong>
-					<p style="white-space: pre-wrap; overflow-wrap: anywhere"><?php echo esc_html( $note['note'] ); ?></p>
+					<p class="wzl-detail-text"><?php echo esc_html( $note['note'] ); ?></p>
 				</li>
 			<?php endforeach; ?>
 		</ul>
